@@ -716,6 +716,17 @@ impl<'a> BuildPlanConstructor<'a> {
             .transpose()?
             .unwrap_or_default();
 
+        let nvcc_flags = native_config
+            .and_then(|native| native.nvcc_flags.as_ref())
+            .map(|s| self.replace_build_vars(target, pkg.module, s))
+            .map(|replaced| {
+                shlex::split(replaced.as_ref()).ok_or_else(|| {
+                    BuildPlanConstructError::MalformedStubCCFlags(pkg.fqn.clone().into())
+                })
+            })
+            .transpose()?
+            .unwrap_or_default();
+
         let mut link_flags = native_config
             .and_then(|native| native.stub_cc_link_flags.as_ref())
             .map(|s| self.replace_build_vars(target, pkg.module, s))
@@ -741,6 +752,7 @@ impl<'a> BuildPlanConstructor<'a> {
         let c_info = BuildCStubsInfo {
             effective_native_toolchain,
             cc_flags,
+            nvcc_flags,
             link_flags,
         };
         self.res.c_stubs_info.insert(target, c_info);

@@ -834,6 +834,7 @@ impl<'a> BuildPlanLowerContext<'a> {
 
         let cc_cmd = if is_cuda {
             self.make_nvcc_command(
+                &info.nvcc_flags,
                 &info.cc_flags,
                 input_file,
                 &output_file,
@@ -866,6 +867,7 @@ impl<'a> BuildPlanLowerContext<'a> {
     /// ```
     fn make_nvcc_command(
         &self,
+        nvcc_flags: &[String],
         user_flags: &[String],
         input: &std::path::Path,
         output: &std::path::Path,
@@ -898,6 +900,7 @@ impl<'a> BuildPlanLowerContext<'a> {
         args.push(output.display().to_string());
         args.push(input.display().to_string());
 
+        args.extend(nvcc_flags.iter().cloned());
         if let Ok(extra) = std::env::var("MOON_NVCC_FLAGS") {
             args.extend(shlex::split(&extra).unwrap_or_default());
         }
