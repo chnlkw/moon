@@ -293,6 +293,8 @@ pub struct BuildCStubsInfo {
     pub(crate) effective_native_toolchain: Toolchain,
     /// Additional flags to pass to the C compiler when compiling the C stubs
     pub(crate) cc_flags: Vec<String>,
+    /// Additional flags to pass to nvcc when compiling .cu stubs
+    pub(crate) nvcc_flags: Vec<String>,
     /// Additional flags to pass to the linker (TCC only)
     #[allow(unused)]
     pub(crate) link_flags: Vec<String>,

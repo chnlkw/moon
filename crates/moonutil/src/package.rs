@@ -466,6 +466,11 @@ pub struct NativeLinkConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link_search_paths: Option<Vec<String>>,
 
+    /// Extra flags for nvcc when compiling .cu files (whitespace-separated).
+    /// Only passed to nvcc, not to the C compiler for .c stubs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nvcc_flags: Option<String>,
+
     /// Compiled stub object files as dependencies for the executable
     ///
     /// (should not be present in the `pkg.json`, generated and populated later)
