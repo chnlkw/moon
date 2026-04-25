@@ -456,6 +456,16 @@ pub struct NativeLinkConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stub_cc_link_flags: Option<String>,
 
+    /// Libraries to link, propagated to all downstream dependents.
+    /// Maps to `-l<lib>` on GCC/Clang, `<lib>.lib` on MSVC.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link_libraries: Option<Vec<String>>,
+
+    /// Library search paths, propagated to all downstream dependents.
+    /// Maps to `-L<path>` on GCC/Clang, `/LIBPATH:<path>` on MSVC.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link_search_paths: Option<Vec<String>>,
+
     /// Compiled stub object files as dependencies for the executable
     ///
     /// (should not be present in the `pkg.json`, generated and populated later)

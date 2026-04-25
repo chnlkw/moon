@@ -1058,36 +1058,62 @@ impl<'a> BuildPlanConstructor<'a> {
         pkgs: impl Iterator<Item = PackageId>,
         out: &mut Vec<String>,
     ) {
-        let Some(prebuild) = self.prebuild_config else {
-            return;
-        };
         let is_msvc_like = toolchain.cc().is_msvc();
         for pkg in pkgs {
-            let Some(link_config) = prebuild.package_configs.get(&pkg) else {
-                continue;
-            };
+            // Read from prebuild config (existing logic, now guarded)
+            if let Some(prebuild) = self.prebuild_config {
+                if let Some(link_config) = prebuild.package_configs.get(&pkg) {
+                    let link_flags = link_config
+                        .link_flags
+                        .as_ref()
+                        .and_then(|x| shlex::split(x));
+                    if let Some(link_flags) = link_flags {
+                        out.extend(link_flags);
+                    }
 
-            let link_flags = link_config
-                .link_flags
-                .as_ref()
-                .and_then(|x| shlex::split(x));
-            if let Some(link_flags) = link_flags {
-                out.extend(link_flags);
-            }
+                    for lib in &link_config.link_libs {
+                        if is_msvc_like {
+                            out.push(format!("{lib}.lib"));
+                        } else {
+                            out.push(format!("-l{lib}"));
+                        }
+                    }
 
-            for lib in &link_config.link_libs {
-                if is_msvc_like {
-                    out.push(format!("{lib}.lib"));
-                } else {
-                    out.push(format!("-l{lib}"));
+                    for path in &link_config.link_search_paths {
+                        if is_msvc_like {
+                            out.push(format!("/LIBPATH:{path}"));
+                        } else {
+                            out.push(format!("-L{path}"));
+                        }
+                    }
                 }
             }
 
-            for path in &link_config.link_search_paths {
-                if is_msvc_like {
-                    out.push(format!("/LIBPATH:{path}"));
-                } else {
-                    out.push(format!("-L{path}"));
+            // Read from NativeLinkConfig in moon.pkg (new)
+            let pkg_data = self.input.pkg_dirs.get_package(pkg);
+            if let Some(native_config) = pkg_data
+                .raw
+                .link
+                .as_ref()
+                .and_then(|l| l.native.as_ref())
+            {
+                if let Some(paths) = &native_config.link_search_paths {
+                    for path in paths {
+                        if is_msvc_like {
+                            out.push(format!("/LIBPATH:{path}"));
+                        } else {
+                            out.push(format!("-L{path}"));
+                        }
+                    }
+                }
+                if let Some(libs) = &native_config.link_libraries {
+                    for lib in libs {
+                        if is_msvc_like {
+                            out.push(format!("{lib}.lib"));
+                        } else {
+                            out.push(format!("-l{lib}"));
+                        }
+                    }
                 }
             }
         }
