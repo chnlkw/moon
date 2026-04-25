@@ -822,20 +822,88 @@ impl<'a> BuildPlanLowerContext<'a> {
             .to_string();
 
         let cc = info.effective_native_toolchain.cc().clone();
-        let cc_cmd = make_cc_command_resolved(
-            cc,
-            config,
-            &info.cc_flags,
-            [input_file.display().to_string()],
-            &intermediate_dir,
-            Some(&output_file.display().to_string()),
-            &self.opt.compiler_paths,
-        );
+
+        // CUDA source files (.cu) are compiled with nvcc instead of the
+        // default C compiler.  nvcc handles CUDA-specific syntax and
+        // automatically links against the CUDA runtime.  We bypass the
+        // normal MoonBit C-compiler pipeline because nvcc does not need
+        // the MoonBit runtime headers, -fwrapv, -fno-strict-aliasing, etc.
+        let is_cuda = input_file
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("cu"));
+
+        let cc_cmd = if is_cuda {
+            self.make_nvcc_command(
+                &info.cc_flags,
+                input_file,
+                &output_file,
+                opt_level,
+                self.opt.debug_symbols,
+            )
+        } else {
+            make_cc_command_resolved(
+                cc,
+                config,
+                &info.cc_flags,
+                [input_file.display().to_string()],
+                &intermediate_dir,
+                Some(&output_file.display().to_string()),
+                &self.opt.compiler_paths,
+            )
+        };
 
         BuildCommand {
             commandline: cc_cmd.into(),
             extra_inputs: vec![input_file.clone()],
         }
+    }
+
+    /// Build a command line for compiling a `.cu` file with `nvcc`.
+    ///
+    /// The command follows the pattern:
+    /// ```text
+    /// nvcc -c -O<level> [-g] -o <output> <input> [<user flags>]
+    /// ```
+    fn make_nvcc_command(
+        &self,
+        user_flags: &[String],
+        input: &std::path::Path,
+        output: &std::path::Path,
+        opt_level: CCOptLevel,
+        debug_info: bool,
+    ) -> Vec<String> {
+        let nvcc = std::env::var("MOON_NVCC")
+            .or_else(|_| std::env::var("NVCC"))
+            .unwrap_or_else(|_| "nvcc".to_string());
+
+        let mut args = vec![nvcc, "-c".to_string()];
+
+        // -fPIC needed for test runner's shared library linking
+        if !cfg!(target_os = "windows") {
+            args.extend(["-Xcompiler".to_string(), "-fPIC".to_string()]);
+        }
+
+        match opt_level {
+            CCOptLevel::Speed => args.push("-O2".to_string()),
+            CCOptLevel::Size => args.push("-Os".to_string()),
+            CCOptLevel::Debug => args.push("-G".to_string()),
+            CCOptLevel::None => args.push("-O0".to_string()),
+        }
+
+        if debug_info {
+            args.push("-g".to_string());
+        }
+
+        args.push("-o".to_string());
+        args.push(output.display().to_string());
+        args.push(input.display().to_string());
+
+        if let Ok(extra) = std::env::var("MOON_NVCC_FLAGS") {
+            args.extend(shlex::split(&extra).unwrap_or_default());
+        }
+        args.extend(user_flags.iter().cloned());
+
+        args
     }
 
     #[instrument(level = Level::DEBUG, skip(self, info))]
