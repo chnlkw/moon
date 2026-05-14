@@ -870,21 +870,30 @@ impl<'a> BuildPlanConstructor<'a> {
             .transpose()?
             .unwrap_or_default();
 
-        let mut link_pkgs: Vec<PackageId> = targets.iter().map(|x| x.package).collect();
-        if !link_pkgs.contains(&target.package) {
-            link_pkgs.push(target.package);
-        }
+        // Collect unique PackageIds from all transitive dependency targets.
+        // Different TargetKinds (Source, BlackboxTest, etc.) can map to the
+        // same PackageId, so we deduplicate to avoid duplicate link flags in
+        // the output (e.g. rspfile for tcc-run).
+        let mut link_pkgs: IndexSet<PackageId> = targets.iter().map(|x| x.package).collect();
+        link_pkgs.insert(target.package);
 
         let effective_native_toolchain = self
             .build_env
             .selected_native_toolchain
             .with_package_override(cc.as_ref());
 
-        self.propagate_link_config(
-            &effective_native_toolchain,
-            link_pkgs.into_iter(),
-            &mut link_flags,
-        );
+        // For tcc-run, the .so files in the rspfile are already fully linked
+        // shared libraries — the dynamic linker resolves transitive
+        // dependencies at runtime.  Propagating -l/-L flags to the rspfile
+        // is unnecessary and can cause tcc failures for libraries it cannot
+        // locate (e.g. libstdc++ which only ships as .so.6, not .so).
+        if self.build_env.target_backend != RunBackend::NativeTccRun {
+            self.propagate_link_config(
+                &effective_native_toolchain,
+                link_pkgs.into_iter(),
+                &mut link_flags,
+            );
+        }
 
         let v = MakeExecutableInfo {
             link_c_stubs: c_stub_deps.clone(),
